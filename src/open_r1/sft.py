@@ -13,11 +13,11 @@
 # limitations under the License.
 
 """
-Supervised fine-tuning script for decoder language models.
+监督微调脚本，用于解码器语言模型。
 
-Usage:
+使用方法：
 
-# One 1 node of 8 x H100s
+# 8 个 H100 GPU 的单个节点
 accelerate launch --config_file=recipes/accelerate_configs/zero3.yaml src/open_r1/sft.py \
     --model_name_or_path open-r1/Qwen2.5-Math-7B-RoPE-300k \
     --dataset_name open-r1/Mixture-of-Thoughts \
@@ -56,7 +56,7 @@ def main(script_args, training_args, model_args):
     set_seed(training_args.seed)
 
     ###############
-    # Setup logging
+    # 设置日志记录
     ###############
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -70,33 +70,33 @@ def main(script_args, training_args, model_args):
     transformers.utils.logging.enable_default_handler()
     transformers.utils.logging.enable_explicit_format()
 
-    logger.info(f"Model parameters {model_args}")
-    logger.info(f"Script parameters {script_args}")
-    logger.info(f"Training parameters {training_args}")
+    logger.info(f"模型参数：{model_args}")
+    logger.info(f"脚本参数：{script_args}")
+    logger.info(f"训练参数：{training_args}")
 
-    # Check for last checkpoint
+    # 检查最后一个检查点
     last_checkpoint = None
     if os.path.isdir(training_args.output_dir):
         last_checkpoint = get_last_checkpoint(training_args.output_dir)
     if last_checkpoint is not None and training_args.resume_from_checkpoint is None:
-        logger.info(f"Checkpoint detected, resuming training at {last_checkpoint=}.")
+        logger.info(f"检测到检查点，从 {last_checkpoint=} 恢复训练。")
 
     if "wandb" in training_args.report_to:
         init_wandb_training(training_args)
 
     ######################################
-    # Load dataset, tokenizer, and model #
+    # 加载数据集、分词器和模型
     ######################################
     dataset = get_dataset(script_args)
     tokenizer = get_tokenizer(model_args, training_args)
     model = get_model(model_args, training_args)
 
     if tokenizer.chat_template is None:
-        logger.info("No chat template provided, defaulting to ChatML.")
+        logger.info("未提供聊天模板，默认使用 ChatML 格式。")
         model, tokenizer = setup_chat_format(model, tokenizer, format="chatml")
 
     ############################
-    # Initialize the SFT Trainer
+    # 初始化 SFT 训练器
     ############################
     trainer = SFTTrainer(
         model=model,
@@ -109,9 +109,9 @@ def main(script_args, training_args, model_args):
     )
 
     ###############
-    # Training loop
+    # 训练循环
     ###############
-    logger.info("*** Train ***")
+    logger.info("*** 开始训练 ***")
     checkpoint = None
     if training_args.resume_from_checkpoint is not None:
         checkpoint = training_args.resume_from_checkpoint
@@ -125,41 +125,41 @@ def main(script_args, training_args, model_args):
     trainer.save_state()
 
     ##################################
-    # Save model and create model card
+    # 保存模型并创建模型卡片
     ##################################
-    logger.info("*** Save model ***")
-    # Align the model's generation config with the tokenizer's eos token
-    # to avoid unbounded generation in the transformers `pipeline()` function
+    logger.info("*** 保存模型 ***")
+    # 将模型的生成配置与分词器的 eos 令牌对齐
+    # 以避免在 transformers `pipeline()` 函数中进行无界生成
     trainer.model.generation_config.eos_token_id = tokenizer.eos_token_id
     trainer.save_model(training_args.output_dir)
-    logger.info(f"Model saved to {training_args.output_dir}")
+    logger.info(f"模型已保存到 {training_args.output_dir}")
 
-    # Save everything else on main process
+    # 仅在主进程上保存其他内容
     kwargs = {
         "dataset_name": script_args.dataset_name,
         "tags": ["open-r1"],
     }
     if trainer.accelerator.is_main_process:
         trainer.create_model_card(**kwargs)
-        # Restore k,v cache for fast inference
+        # 为快速推理恢复 k,v 缓存
         trainer.model.config.use_cache = True
         trainer.model.config.save_pretrained(training_args.output_dir)
 
     ##########
-    # Evaluate
+    # 评估模型
     ##########
     if training_args.do_eval:
-        logger.info("*** Evaluate ***")
+        logger.info("*** 开始评估 ***")
         metrics = trainer.evaluate()
         metrics["eval_samples"] = len(dataset[script_args.dataset_test_split])
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
 
     #############
-    # push to hub
+    # 推送到 Hub
     #############
     if training_args.push_to_hub:
-        logger.info("Pushing to hub...")
+        logger.info("正在推送到 Hub...")
         trainer.push_to_hub(**kwargs)
 
 
